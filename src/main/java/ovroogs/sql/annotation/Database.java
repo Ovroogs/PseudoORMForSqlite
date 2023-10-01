@@ -11,4 +11,5 @@ import static java.lang.annotation.RetentionPolicy.RUNTIME;
 public @interface Database {
     String name() default "db";
     String path() default "jdbc:sqlite:";
+    String extension() default "sqlite";
 }

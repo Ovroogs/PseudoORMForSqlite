@@ -11,4 +11,12 @@ public class AuthorTable {
     private String name;
     @Column(type = ColumnType.TEXT)
     private String surname;
+
+    public AuthorTable() {}
+
+    public AuthorTable(long id, String name, String surname) {
+        this.id = id;
+        this.name = name;
+        this.surname = surname;
+    }
 }

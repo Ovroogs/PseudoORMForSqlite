@@ -1,16 +1,10 @@
 package ovroogs.sql.database;
 
 import org.sqlite.SQLiteConfig;
-import ovroogs.sql.annotation.Column;
 import ovroogs.sql.annotation.Database;
-import ovroogs.sql.annotation.Entity;
 
 import java.lang.reflect.Field;
-import java.sql.Connection;
-import java.sql.DriverManager;
-import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.sql.Statement;
+import java.sql.*;
 import java.util.Arrays;
 
 public class DatabaseClass {
@@ -19,10 +13,12 @@ public class DatabaseClass {
     private static Connection _connection;
     private static Statement _statement;
     private static ResultSet _result;
+
     private static final SQLiteConfig _config = new SQLiteConfig();
 
     // --------ПОДКЛЮЧЕНИЕ К БАЗЕ ДАННЫХ--------
     public static boolean connect() {
+        if (connectionString == null && connectionString.isEmpty()) throw new RuntimeException("No Database parameter");
         try {
             Class.forName("org.sqlite.JDBC");
 
@@ -44,17 +40,24 @@ public class DatabaseClass {
         _config.enforceForeignKeys(true);
 
         var db = database.getAnnotation(Database.class);
-        connectionString = db.path() + db.name() + ".sqlite";
+        connectionString = db.path() + db.name() + "." + db.extension();
 
-        if (connect()) createTables(database.getDeclaredFields());
+        if (connect()) {
+            createTables(database.getDeclaredFields());
+            disconnect();
+        }
     }
 
     public static void createTables(Field... tables) {
-        Arrays.stream(tables).map(Field::getType).forEach(type -> Table.create(type, _statement));
+        Arrays.stream(tables).map(Field::getType).forEach(Table::create);
     }
 
     public static void createTables(Class<?>... tables) {
-        Arrays.stream(tables).forEach(table -> Table.create(table, _statement));
+        Arrays.stream(tables).forEach(Table::create);
+    }
+
+    public static Statement getStatement() {
+        return _statement;
     }
 
     // --------Закрытие--------
