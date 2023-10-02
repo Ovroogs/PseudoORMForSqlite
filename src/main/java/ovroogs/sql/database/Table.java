@@ -4,22 +4,23 @@ import ovroogs.sql.annotation.*;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.Arrays;
 
 public class Table {
     protected static void create(Class<?> table) {
         if (!table.isAnnotationPresent(Entity.class)) return;
+        System.out.println();
 
         var entity = table.getAnnotation(Entity.class);
         var tableName = entity.name().isEmpty() ? table.getSimpleName() : entity.name();
         var query = new StringBuilder("CREATE TABLE if not exists ").append(tableName).append('(');
 
-        var fields = table.getDeclaredFields();
-        var length = fields.length;
+        var fields = Arrays.stream(table.getDeclaredFields()).filter(item -> item.isAnnotationPresent(Column.class)).toList();
+        var length = fields.size();
         var primary = false;
 
         for (int i = 0; i < length; i++) {
-            var field = fields[i];
-            if (!field.isAnnotationPresent(Column.class)) continue;
+            var field = fields.get(i);
 
             var column = field.getAnnotation(Column.class);
             var columnName = column.name();
@@ -55,8 +56,8 @@ public class Table {
             if (name.isEmpty()) name = target;
 
             query.append(", \nFOREIGN KEY (").append(foreignKey.internalColumn()).append(") REFERENCES ").append(name)
-            .append(" (").append(foreignKey.externalColumn()).append(") ON DELETE ").append(foreignKey.delete().getAction())
-            .append(" ON UPDATE ").append(foreignKey.update().getAction()).append(i != length - 1 ? ", \n" : "\n");
+                    .append(" (").append(foreignKey.externalColumn()).append(") ON DELETE ").append(foreignKey.delete().getAction())
+                    .append(" ON UPDATE ").append(foreignKey.update().getAction()).append(i != length - 1 ? ", \n" : "\n");
         }
 
         var uniqueConstraints = entity.uniqueConstraints();
@@ -74,6 +75,7 @@ public class Table {
         }
 
         query.append(");");
+        System.out.println();
 
         try {
             System.out.println(query);
@@ -107,17 +109,16 @@ public class Table {
         if (name.isEmpty()) name = data.getName();
 
         var query = new StringBuilder("INSERT INTO [").append(name).append("] ");
-        var fields = data.getDeclaredFields();
-        var colums = new StringBuilder();
+        var columns = new StringBuilder();
         var values = new StringBuilder();
-        var length = fields.length;
+
+        var fields = Arrays.stream(data.getDeclaredFields()).filter(item -> item.isAnnotationPresent(Column.class))
+                .filter(item -> !(item.isAnnotationPresent(PrimaryKey.class) && item.getAnnotation(PrimaryKey.class).autoincrement())).toList();
+        var length = fields.size();
 
         for (var i = 0; i < length; i++) {
-            var field = fields[i];
+            var field = fields.get(i);
             try {
-                if (!field.isAnnotationPresent(Column.class)) continue;
-                if (field.isAnnotationPresent(PrimaryKey.class) && field.getAnnotation(PrimaryKey.class).autoincrement()) continue;
-
                 var column = field.getAnnotation(Column.class);
                 var columnName = column.name();
                 if (columnName.isEmpty()) columnName = field.getName();
@@ -126,12 +127,12 @@ public class Table {
 
                 var value = field.get(table);
 
-                colums.append(columnName);
+                columns.append(columnName);
 
                 if (column.type().equals(ColumnType.TEXT)) values.append('\'').append(value).append('\'');
                 else values.append(value);
 
-                colums.append(i != length - 1 ? "," : "");
+                columns.append(i != length - 1 ? "," : "");
                 values.append(i != length - 1 ? "," : "");
 
                 field.setAccessible(false);
@@ -139,7 +140,7 @@ public class Table {
                 System.out.println(e.getMessage());
             }
         }
-        query.append("(").append(colums).append(") VALUES (").append(values).append(")");
+        query.append("(").append(columns).append(") VALUES (").append(values).append(")");
         try {
             System.out.println(query);
             DatabaseClass.getStatement().execute(query.toString());
@@ -159,12 +160,35 @@ public class Table {
 
         var query = new StringBuilder("Update [").append(name).append("] SET \n");
         var where = new StringBuilder();
-        var fields = data.getDeclaredFields();
-        for (int i = 0; i < fields.length; i++) {
-            var field = fields[i];
-            try {
-                if (!field.isAnnotationPresent(Column.class)) continue;
+        var fields = Arrays.stream(data.getDeclaredFields()).filter(item -> item.isAnnotationPresent(Column.class)).toList();
 
+        for (var field : fields) {
+            if (field.isAnnotationPresent(PrimaryKey.class)) {
+                try {
+                    var column = field.getAnnotation(Column.class);
+                    var columnName = column.name();
+                    if (columnName.isEmpty()) columnName = field.getName();
+
+                    field.setAccessible(true);
+
+                    var value = field.get(table);
+                    where.append("Where ");
+                    if (column.type().equals(ColumnType.TEXT)) where.append(columnName).append(" = ").append('\'').append(value).append('\'');
+                    else where.append(columnName).append(" = ").append(value);
+
+                    field.setAccessible(false);
+                } catch (IllegalAccessException e) {
+                    System.out.println(e.getMessage());
+                }
+            }
+        }
+
+        var primary = PrimaryKey.class;
+        fields = fields.stream().filter(item -> !(item.isAnnotationPresent(primary) && item.getAnnotation(primary).autoincrement())).toList();
+
+        for (int i = 0; i < fields.size(); i++) {
+            var field = fields.get(i);
+            try {
                 var column = field.getAnnotation(Column.class);
                 var columnName = column.name();
                 if (columnName.isEmpty()) columnName = field.getName();
@@ -173,18 +197,10 @@ public class Table {
 
                 var value = field.get(table);
 
-                if (field.isAnnotationPresent(PrimaryKey.class)) {
-                    where.append("Where ");
-                    if (column.type().equals(ColumnType.TEXT)) where.append(columnName).append(" = ").append('\'').append(value).append('\'');
-                    else where.append(columnName).append(" = ").append(value);
-
-                    if (field.getAnnotation(PrimaryKey.class).autoincrement()) continue;
-                }
-
                 if (column.type().equals(ColumnType.TEXT)) query.append(columnName).append(" = ").append('\'').append(value).append('\'');
                 else query.append(columnName).append(" = ").append(value);
 
-                query.append(i != fields.length - 1 ? ", \n" : "\n");
+                query.append(i != fields.size() - 1 ? ", \n" : "\n");
 
                 field.setAccessible(false);
             } catch (IllegalAccessException e) {
