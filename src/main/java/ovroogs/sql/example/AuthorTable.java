@@ -7,8 +7,10 @@ public class AuthorTable {
     @PrimaryKey(autoincrement = true)
     @Column(type = ColumnType.INTEGER)
     private long id;
+    @DefaultString("ne_komar")
     @Column(type = ColumnType.TEXT)
     private String name;
+    @DefaultString
     @Column(type = ColumnType.TEXT)
     private String surname;
 

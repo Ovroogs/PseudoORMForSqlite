@@ -2,16 +2,19 @@ package ovroogs.sql.database;
 
 import ovroogs.sql.annotation.*;
 
+import java.lang.annotation.Annotation;
+import java.lang.reflect.Field;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.Arrays;
 
 public class Table {
     protected static void create(Class<?> table) {
-        if (!table.isAnnotationPresent(Entity.class)) return;
+        var entityClass = Entity.class;
+        if (!table.isAnnotationPresent(entityClass)) return;
         System.out.println();
 
-        var entity = table.getAnnotation(Entity.class);
+        var entity = table.getAnnotation(entityClass);
         var tableName = entity.name().isEmpty() ? table.getSimpleName() : entity.name();
         var query = new StringBuilder("CREATE TABLE if not exists ").append(tableName).append('(');
 
@@ -42,6 +45,35 @@ public class Table {
                 if (column.unique()) query.append(" UNIQUE ");
             }
 
+            var defaultStr = DefaultString.class;
+            var defaultReal = DefaultReal.class;
+            var defaultInt = DefaultInteger.class;
+
+            switch (column.type()){
+                case INTEGER -> {
+                    if (field.isAnnotationPresent(defaultStr) && field.isAnnotationPresent(defaultReal))
+                        throw new IllegalStateException("Unexpected value: " + column.type());
+
+                    if (field.isAnnotationPresent(defaultInt))
+                        query.append(" DEFAULT ").append(field.getAnnotation(defaultInt).value());
+                }
+                case REAL -> {
+                    if (field.isAnnotationPresent(defaultStr) && field.isAnnotationPresent(defaultInt))
+                        throw new IllegalStateException("Unexpected value: " + column.type());
+
+                    if (field.isAnnotationPresent(defaultReal))
+                        query.append(" DEFAULT ").append(field.getAnnotation(defaultReal).value());
+                }
+                case TEXT -> {
+                    if (field.isAnnotationPresent(defaultReal) && field.isAnnotationPresent(defaultInt))
+                        throw new IllegalStateException("Unexpected value: " + column.type());
+
+                    if (field.isAnnotationPresent(defaultStr))
+                        query.append(" DEFAULT ").append('\'').append(field.getAnnotation(defaultStr).value()).append('\'');
+                }
+                case NUMERIC, BLOB -> { }
+                default -> throw new IllegalStateException("Unexpected value: " + column.type());
+            }
             query.append(i != length - 1 ? "," : "");
         }
 
@@ -51,13 +83,13 @@ public class Table {
         for(var i = 0; i < length; i++) {
             var foreignKey = foreignKeys[i];
             var target = foreignKey.targetEntity().getSimpleName();
-            var name = foreignKey.targetEntity().getAnnotation(Entity.class).name();
+            var name = foreignKey.targetEntity().getAnnotation(entityClass).name();
 
             if (name.isEmpty()) name = target;
 
             query.append(", \nFOREIGN KEY (").append(foreignKey.internalColumn()).append(") REFERENCES ").append(name)
-                    .append(" (").append(foreignKey.externalColumn()).append(") ON DELETE ").append(foreignKey.delete().getAction())
-                    .append(" ON UPDATE ").append(foreignKey.update().getAction()).append(i != length - 1 ? ", \n" : "\n");
+            .append(" (").append(foreignKey.externalColumn()).append(") ON DELETE ").append(foreignKey.delete().getAction())
+            .append(" ON UPDATE ").append(foreignKey.update().getAction()).append(i != length - 1 ? ", \n" : "\n");
         }
 
         var uniqueConstraints = entity.uniqueConstraints();
