@@ -2,7 +2,6 @@ package ovroogs.sql.database;
 
 import ovroogs.sql.annotation.*;
 
-import java.lang.annotation.Annotation;
 import java.lang.reflect.Field;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -88,8 +87,8 @@ public class Table {
             if (name.isEmpty()) name = target;
 
             query.append(", \nFOREIGN KEY (").append(foreignKey.internalColumn()).append(") REFERENCES ").append(name)
-            .append(" (").append(foreignKey.externalColumn()).append(") ON DELETE ").append(foreignKey.delete().getAction())
-            .append(" ON UPDATE ").append(foreignKey.update().getAction()).append(i != length - 1 ? ", \n" : "\n");
+                    .append(" (").append(foreignKey.externalColumn()).append(") ON DELETE ").append(foreignKey.delete().getAction())
+                    .append(" ON UPDATE ").append(foreignKey.update().getAction()).append(i != length - 1 ? ", \n" : "\n");
         }
 
         var uniqueConstraints = entity.uniqueConstraints();
@@ -140,7 +139,8 @@ public class Table {
         var name = data.getAnnotation(Entity.class).name();
         if (name.isEmpty()) name = data.getName();
 
-        var query = new StringBuilder("INSERT INTO [").append(name).append("] ");
+        var query = new StringBuilder("INSERT INTO ").append(name).append(" ");
+
         var columns = new StringBuilder();
         var values = new StringBuilder();
 
@@ -155,19 +155,15 @@ public class Table {
                 var columnName = column.name();
                 if (columnName.isEmpty()) columnName = field.getName();
 
-                field.setAccessible(true);
-
-                var value = field.get(table);
-
                 columns.append(columnName);
 
-                if (column.type().equals(ColumnType.TEXT)) values.append('\'').append(value).append('\'');
+                var value = getValue(table, field, column);
+
+                if (column.type().equals(ColumnType.TEXT) && value != null) values.append('\'').append(value).append('\'');
                 else values.append(value);
 
                 columns.append(i != length - 1 ? "," : "");
                 values.append(i != length - 1 ? "," : "");
-
-                field.setAccessible(false);
             } catch (IllegalAccessException e) {
                 System.out.println(e.getMessage());
             }
@@ -182,7 +178,6 @@ public class Table {
 
         return true;
     }
-
     public static <T> boolean update(T table) {
         var data = table.getClass();
         if (!data.isAnnotationPresent(Entity.class)) return false;
@@ -201,14 +196,11 @@ public class Table {
                     var columnName = column.name();
                     if (columnName.isEmpty()) columnName = field.getName();
 
-                    field.setAccessible(true);
+                    var value = getValue(table, field, column);
 
-                    var value = field.get(table);
                     where.append("Where ");
-                    if (column.type().equals(ColumnType.TEXT)) where.append(columnName).append(" = ").append('\'').append(value).append('\'');
+                    if (column.type().equals(ColumnType.TEXT) && value != null) where.append(columnName).append(" = ").append('\'').append(value).append('\'');
                     else where.append(columnName).append(" = ").append(value);
-
-                    field.setAccessible(false);
                 } catch (IllegalAccessException e) {
                     System.out.println(e.getMessage());
                 }
@@ -229,7 +221,7 @@ public class Table {
 
                 var value = field.get(table);
 
-                if (column.type().equals(ColumnType.TEXT)) query.append(columnName).append(" = ").append('\'').append(value).append('\'');
+                if (column.type().equals(ColumnType.TEXT) && value != null) query.append(columnName).append(" = ").append('\'').append(value).append('\'');
                 else query.append(columnName).append(" = ").append(value);
 
                 query.append(i != fields.size() - 1 ? ", \n" : "\n");
@@ -254,6 +246,39 @@ public class Table {
         return true;
     }
 
+    private static <T> Object getValue(T table, Field field, Column column) throws IllegalAccessException {
+        field.setAccessible(true);
+
+        var value = field.get(table);
+
+        var defaultStr = DefaultString.class;
+        var defaultReal = DefaultReal.class;
+        var defaultInt = DefaultInteger.class;
+
+        field.setAccessible(false);
+
+        if (column.notNull()) {
+            switch (column.type()){
+                case INTEGER -> {
+                    if (field.isAnnotationPresent(defaultInt)) value = field.getAnnotation(defaultInt).value();
+                    else throw new IllegalStateException("null value is not accepted");
+                }
+                case REAL -> {
+                    if (field.isAnnotationPresent(defaultReal)) value = field.getAnnotation(defaultReal).value();
+                    else throw new IllegalStateException("null value is not accepted");
+                }
+                case TEXT -> {
+                    if (field.isAnnotationPresent(defaultStr)) value = field.getAnnotation(defaultStr).value();
+                    else throw new IllegalStateException("null value is not accepted");
+                }
+                case NUMERIC, BLOB -> { }
+                default -> throw new IllegalStateException("Unexpected value: " + column.type());
+            }
+        }
+
+        return value;
+    }
+
     public static <T> ResultSet delete(Class<?> table, T id) {
         if (!table.isAnnotationPresent(Entity.class)) return null;
 
@@ -263,7 +288,7 @@ public class Table {
         ResultSet result;
         try {
             var query = new StringBuilder("DELETE FROM ").append(name).append(" WHERE id = ");
-
+            if (id == null) throw new IllegalStateException("Unexpected value");
             if (id instanceof String) query.append('\'').append(id).append('\'');
             else query.append(id);
 
