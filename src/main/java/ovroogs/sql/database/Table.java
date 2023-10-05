@@ -1,12 +1,13 @@
 package ovroogs.sql.database;
 
-import ovroogs.sql.TypeException;
+import ovroogs.sql.exception.TypeException;
 import ovroogs.sql.annotation.*;
 
 import java.lang.reflect.Field;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.Arrays;
+import java.util.HashMap;
 
 public class Table {
     protected static void create(Class<?> table) throws SQLException {
@@ -125,7 +126,74 @@ public class Table {
         return result;
     }
 
-    // сделать selectByField(Class<?> table, Hashmap nameFields)
+    public static <T> ResultSet selectByFields(Class<?> table, HashMap<String,T> pairs) throws TypeException, SQLException {
+        if (pairs.isEmpty()) return null;
+        if (!table.isAnnotationPresent(Entity.class)) return null;
+
+        var name = table.getAnnotation(Entity.class).name();
+        if (name.isEmpty()) name = table.getName();
+
+        var fields = Arrays.stream(table.getDeclaredFields()).filter(field -> field.isAnnotationPresent(Column.class)).toList();
+        var existColumns = new Boolean[pairs.size()];
+        var count = 0;
+
+        for (var item : pairs.entrySet()) {
+            for (Field field : fields) {
+                var column = field.getAnnotation(Column.class);
+                var columnName = column.name();
+                var columnType = column.type();
+
+                if (columnName.isEmpty()) columnName = field.getName();
+
+                if (columnName.equals(item.getKey())) {
+                    var value = item.getValue();
+                    if (!(value instanceof String) && !(value instanceof Number)) throw new TypeException();
+
+                    switch (columnType) {
+                        case TEXT -> {
+                            if (!(value instanceof String)) throw new TypeException();
+                        }
+                        case INTEGER -> {
+                            if ((value instanceof String || value instanceof Double || value instanceof Float))
+                                throw new TypeException();
+                        }
+                        case REAL -> {
+                            if (value instanceof String) throw new TypeException();
+                        }
+                        default -> throw new TypeException();
+                    }
+
+                    existColumns[count++] = true;
+
+                    if (count == pairs.size()) break;
+                }
+            }
+        }
+
+        var existColumn =  Arrays.stream(existColumns).allMatch(item -> item);
+
+        if (!existColumn) return null;
+
+        count = 0;
+        ResultSet result;
+        var query = new StringBuilder("SELECT * FROM ").append(name).append(" WHERE ");
+
+        for (var item : pairs.entrySet()) {
+            var nameField = item.getKey();
+            var value = item.getValue();
+
+            if (value instanceof String) query.append(nameField).append(" = '").append(value).append("'");
+            else query.append(nameField).append(" = ").append(value);
+
+            if (++count < pairs.size()) query.append(" AND ");
+        }
+
+        query.append(";");
+
+        result = DatabaseClass.getStatement().executeQuery(query.toString());
+
+        return result;
+    }
 
     public static <T> ResultSet selectByField(Class<?> table, String nameField, T value) throws TypeException, SQLException {
         if (!table.isAnnotationPresent(Entity.class)) return null;

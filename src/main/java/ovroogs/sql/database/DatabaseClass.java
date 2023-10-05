@@ -18,7 +18,7 @@ public class DatabaseClass {
 
     // --------ПОДКЛЮЧЕНИЕ К БАЗЕ ДАННЫХ--------
     public static boolean connect() {
-        if (connectionString == null && connectionString.isEmpty()) throw new RuntimeException("No Database parameter");
+        if (connectionString == null || connectionString.isEmpty()) throw new RuntimeException("No Database parameter");
         try {
             Class.forName("org.sqlite.JDBC");
 

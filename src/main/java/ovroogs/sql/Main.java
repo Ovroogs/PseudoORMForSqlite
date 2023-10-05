@@ -1,14 +1,15 @@
 package ovroogs.sql;
 
-import ovroogs.sql.annotation.Database;
 import ovroogs.sql.database.DatabaseClass;
 import ovroogs.sql.database.Table;
 import ovroogs.sql.example.AuthorTable;
 import ovroogs.sql.example.Library;
+import ovroogs.sql.exception.TypeException;
 
 import java.math.BigDecimal;
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.HashMap;
 
 public class Main {
     public static void main(String[] args) {
@@ -24,7 +25,12 @@ public class Main {
 //                Table.insert(author);
 //                Table.insert(author2);
 //                Table.insert(author3);
-                var result = Table.selectByField(AuthorTable.class, "id", new BigDecimal(0));
+                var pairs = new HashMap<String, String>();
+                pairs.put("name", "fel");
+                pairs.put("surname", "fez1");
+
+                var result = Table.selectByFields(AuthorTable.class, pairs);
+
                 while (result.next()) {
                     authors.add(new AuthorTable(result));
                 }
