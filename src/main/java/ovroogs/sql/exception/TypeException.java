@@ -1,4 +1,4 @@
-package ovroogs.sql;
+package ovroogs.sql.exception;
 
 public class TypeException extends Exception {
     public TypeException() {
