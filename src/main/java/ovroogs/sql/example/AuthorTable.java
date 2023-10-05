@@ -2,6 +2,9 @@ package ovroogs.sql.example;
 
 import ovroogs.sql.annotation.*;
 
+import java.sql.ResultSet;
+import java.sql.SQLException;
+
 @Entity(name = "author", uniqueConstraints = { @UniqueConstraint(columnNames = { "name", "surname" }) })
 public class AuthorTable {
     @PrimaryKey(autoincrement = true)
@@ -20,5 +23,11 @@ public class AuthorTable {
         this.id = id;
         this.name = name;
         this.surname = surname;
+    }
+
+    public AuthorTable(ResultSet result) throws SQLException {
+        id = result.getLong("id");
+        name = result.getString("name");
+        surname = result.getString("surname");
     }
 }

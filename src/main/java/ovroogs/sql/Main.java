@@ -6,13 +6,31 @@ import ovroogs.sql.database.Table;
 import ovroogs.sql.example.AuthorTable;
 import ovroogs.sql.example.Library;
 
+import java.math.BigDecimal;
+import java.sql.SQLException;
+import java.util.ArrayList;
+
 public class Main {
     public static void main(String[] args) {
-        DatabaseClass.setConfig(Library.class);
-        var author = new AuthorTable(1L, "felz", "fez");
+        try {
+            DatabaseClass.setConfig(Library.class);
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+        var authors = new ArrayList<AuthorTable>();
         if (DatabaseClass.connect()) {
 //            Table.insert(author);
-            Table.update(author);
+            try {
+//                Table.insert(author);
+//                Table.insert(author2);
+//                Table.insert(author3);
+                var result = Table.selectByField(AuthorTable.class, "id", new BigDecimal(0));
+                while (result.next()) {
+                    authors.add(new AuthorTable(result));
+                }
+            } catch (SQLException | TypeException e) {
+                throw new RuntimeException(e);
+            }
         }
     }
 }

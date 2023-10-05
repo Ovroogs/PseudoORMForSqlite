@@ -35,7 +35,7 @@ public class DatabaseClass {
         }
     }
 
-    public static void setConfig(Class<?> database) {
+    public static void setConfig(Class<?> database) throws SQLException {
         if (!database.isAnnotationPresent(Database.class)) throw new RuntimeException("No Database parameter");
         _config.enforceForeignKeys(true);
 
@@ -48,12 +48,17 @@ public class DatabaseClass {
         }
     }
 
-    public static void createTables(Field... tables) {
-        Arrays.stream(tables).map(Field::getType).forEach(Table::create);
+    public static void createTables(Field... tables) throws SQLException {
+        for (Field table : tables) {
+            Class<?> type = table.getType();
+            Table.create(type);
+        }
     }
 
-    public static void createTables(Class<?>... tables) {
-        Arrays.stream(tables).forEach(Table::create);
+    public static void createTables(Class<?>... tables) throws SQLException {
+        for (Class<?> table : tables) {
+            Table.create(table);
+        }
     }
 
     public static Statement getStatement() {

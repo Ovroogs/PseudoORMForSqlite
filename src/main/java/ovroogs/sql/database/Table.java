@@ -1,5 +1,6 @@
 package ovroogs.sql.database;
 
+import ovroogs.sql.TypeException;
 import ovroogs.sql.annotation.*;
 
 import java.lang.reflect.Field;
@@ -8,7 +9,7 @@ import java.sql.SQLException;
 import java.util.Arrays;
 
 public class Table {
-    protected static void create(Class<?> table) {
+    protected static void create(Class<?> table) throws SQLException {
         var entityClass = Entity.class;
         if (!table.isAnnotationPresent(entityClass)) return;
         System.out.println();
@@ -108,31 +109,77 @@ public class Table {
         query.append(");");
         System.out.println();
 
-        try {
-            System.out.println(query);
-            DatabaseClass.getStatement().execute(query.toString());
-        } catch (SQLException e) {
-            System.out.println(e.getMessage());
-        }
+        System.out.println(query);
+        DatabaseClass.getStatement().execute(query.toString());
     }
 
-    public static ResultSet select(Class<?> table) {
+    public static ResultSet select(Class<?> table) throws SQLException {
         if (!table.isAnnotationPresent(Entity.class)) return null;
 
         var name = table.getAnnotation(Entity.class).name();
         if (name.isEmpty()) name = table.getName();
 
         ResultSet result;
-        try {
-            result = DatabaseClass.getStatement().executeQuery("SELECT * FROM " + name + ";");
-        } catch (SQLException e) {
-            throw new RuntimeException(e);
-        }
+        result = DatabaseClass.getStatement().executeQuery("SELECT * FROM " + name + ";");
 
         return result;
     }
 
-    public static <T> boolean insert(T table) {
+    // сделать selectByField(Class<?> table, Hashmap nameFields)
+
+    public static <T> ResultSet selectByField(Class<?> table, String nameField, T value) throws TypeException, SQLException {
+        if (!table.isAnnotationPresent(Entity.class)) return null;
+
+        var name = table.getAnnotation(Entity.class).name();
+        if (name.isEmpty()) name = table.getName();
+
+        var fields = Arrays.stream(table.getDeclaredFields()).filter(field -> field.isAnnotationPresent(Column.class)).toList();
+
+        var existColumn = false;
+
+        for (var field : fields) {
+            var column = field.getAnnotation(Column.class);
+            var columnName = column.name();
+            var columnType = column.type();
+
+            if (columnName.isEmpty()) columnName = field.getName();
+
+            if (columnName.equals(nameField)) {
+                if (!(value instanceof String) && !(value instanceof Number)) throw new TypeException();
+
+                switch (columnType) {
+                    case TEXT -> {
+                        if (!(value instanceof String)) throw new TypeException();
+                    }
+                    case INTEGER -> {
+                        if ((value instanceof String || value instanceof Double || value instanceof Float))
+                            throw new TypeException();
+                    }
+                    case REAL -> {
+                        if (value instanceof String) throw new TypeException();
+                    }
+                    default -> throw new TypeException();
+                }
+
+                existColumn = true;
+                break;
+            }
+        }
+
+        if (!existColumn) return null;
+
+        ResultSet result;
+        String query;
+
+        if (value instanceof String) query = "SELECT * FROM " + name + " WHERE " + nameField + " = '" + value +"';";
+        else query = "SELECT * FROM " + name + " WHERE " + nameField + " = " + value +";";
+
+        result = DatabaseClass.getStatement().executeQuery(query);
+
+        return result;
+    }
+
+    public static <T> boolean insert(T table) throws IllegalAccessException, SQLException {
         var data = table.getClass();
         if (!data.isAnnotationPresent(Entity.class)) return false;
 
@@ -150,35 +197,27 @@ public class Table {
 
         for (var i = 0; i < length; i++) {
             var field = fields.get(i);
-            try {
-                var column = field.getAnnotation(Column.class);
-                var columnName = column.name();
-                if (columnName.isEmpty()) columnName = field.getName();
+            var column = field.getAnnotation(Column.class);
+            var columnName = column.name();
+            if (columnName.isEmpty()) columnName = field.getName();
 
-                columns.append(columnName);
+            columns.append(columnName);
 
-                var value = getValue(table, field, column);
+            var value = getValue(table, field, column);
 
-                if (column.type().equals(ColumnType.TEXT) && value != null) values.append('\'').append(value).append('\'');
-                else values.append(value);
+            if (column.type().equals(ColumnType.TEXT) && value != null) values.append('\'').append(value).append('\'');
+            else values.append(value);
 
-                columns.append(i != length - 1 ? "," : "");
-                values.append(i != length - 1 ? "," : "");
-            } catch (IllegalAccessException e) {
-                System.out.println(e.getMessage());
-            }
+            columns.append(i != length - 1 ? "," : "");
+            values.append(i != length - 1 ? "," : "");
         }
         query.append("(").append(columns).append(") VALUES (").append(values).append(")");
-        try {
-            System.out.println(query);
-            DatabaseClass.getStatement().execute(query.toString());
-        } catch (SQLException e) {
-            System.out.println(e.getMessage());
-        }
+        System.out.println(query);
+        DatabaseClass.getStatement().execute(query.toString());
 
         return true;
     }
-    public static <T> boolean update(T table) {
+    public static <T> boolean update(T table) throws IllegalAccessException, SQLException {
         var data = table.getClass();
         if (!data.isAnnotationPresent(Entity.class)) return false;
 
@@ -191,19 +230,15 @@ public class Table {
 
         for (var field : fields) {
             if (field.isAnnotationPresent(PrimaryKey.class)) {
-                try {
-                    var column = field.getAnnotation(Column.class);
-                    var columnName = column.name();
-                    if (columnName.isEmpty()) columnName = field.getName();
+                var column = field.getAnnotation(Column.class);
+                var columnName = column.name();
+                if (columnName.isEmpty()) columnName = field.getName();
 
-                    var value = getValue(table, field, column);
+                var value = getValue(table, field, column);
 
-                    where.append("Where ");
-                    if (column.type().equals(ColumnType.TEXT) && value != null) where.append(columnName).append(" = ").append('\'').append(value).append('\'');
-                    else where.append(columnName).append(" = ").append(value);
-                } catch (IllegalAccessException e) {
-                    System.out.println(e.getMessage());
-                }
+                where.append("Where ");
+                if (column.type().equals(ColumnType.TEXT) && value != null) where.append(columnName).append(" = ").append('\'').append(value).append('\'');
+                else where.append(columnName).append(" = ").append(value);
             }
         }
 
@@ -212,36 +247,28 @@ public class Table {
 
         for (int i = 0; i < fields.size(); i++) {
             var field = fields.get(i);
-            try {
-                var column = field.getAnnotation(Column.class);
-                var columnName = column.name();
-                if (columnName.isEmpty()) columnName = field.getName();
+            var column = field.getAnnotation(Column.class);
+            var columnName = column.name();
+            if (columnName.isEmpty()) columnName = field.getName();
 
-                field.setAccessible(true);
+            field.setAccessible(true);
 
-                var value = field.get(table);
+            var value = field.get(table);
 
-                if (column.type().equals(ColumnType.TEXT) && value != null) query.append(columnName).append(" = ").append('\'').append(value).append('\'');
-                else query.append(columnName).append(" = ").append(value);
+            if (column.type().equals(ColumnType.TEXT) && value != null) query.append(columnName).append(" = ").append('\'').append(value).append('\'');
+            else query.append(columnName).append(" = ").append(value);
 
-                query.append(i != fields.size() - 1 ? ", \n" : "\n");
+            query.append(i != fields.size() - 1 ? ", \n" : "\n");
 
-                field.setAccessible(false);
-            } catch (IllegalAccessException e) {
-                System.out.println(e.getMessage());
-            }
+            field.setAccessible(false);
         }
 
         query.append(where);
 
         query.append(";");
 
-        try {
-            System.out.println(query);
-            DatabaseClass.getStatement().execute(query.toString());
-        } catch (SQLException e) {
-            System.out.println(e.getMessage());
-        }
+        System.out.println(query);
+        DatabaseClass.getStatement().execute(query.toString());
 
         return true;
     }
@@ -279,25 +306,21 @@ public class Table {
         return value;
     }
 
-    public static <T> ResultSet delete(Class<?> table, T id) {
+    public static <T> ResultSet delete(Class<?> table, T id) throws SQLException {
         if (!table.isAnnotationPresent(Entity.class)) return null;
 
         var name = table.getAnnotation(Entity.class).name();
         if (name.isEmpty()) name = table.getName();
 
         ResultSet result;
-        try {
-            var query = new StringBuilder("DELETE FROM ").append(name).append(" WHERE id = ");
-            if (id == null) throw new IllegalStateException("Unexpected value");
-            if (id instanceof String) query.append('\'').append(id).append('\'');
-            else query.append(id);
+        var query = new StringBuilder("DELETE FROM ").append(name).append(" WHERE id = ");
+        if (id == null) throw new IllegalStateException("Unexpected value");
+        if (id instanceof String) query.append('\'').append(id).append('\'');
+        else query.append(id);
 
-            query.append(";");
+        query.append(";");
 
-            result = DatabaseClass.getStatement().executeQuery(query.toString());
-        } catch (SQLException e) {
-            throw new RuntimeException(e);
-        }
+        result = DatabaseClass.getStatement().executeQuery(query.toString());
 
         return result;
     }
